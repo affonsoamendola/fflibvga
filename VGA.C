@@ -21,7 +21,6 @@
 #include <conio.h>
 
 #include <VGA.H>
-#include <FONFLIB.H>
 
 unsigned char far* frame_buffer = 0xA0000000;
 unsigned char far* draw_buffer = 0xA0004B00L;
@@ -48,6 +47,26 @@ void set_pallette(unsigned char* pallette, int start_index, int end_index)
 		for(j=0; j<3; j++)
 		{
 			outportb(DAC_DATA,*(pallette+(i*3)+j));
+		}
+	}
+}
+
+void fputi(int number, int size, FILE * file)
+{
+	int i;
+
+	int current_char;
+
+	int middle_of_number = 0;
+
+	for(i = (size-1); i>=0; i--)
+	{
+		current_char = number;
+		current_char = (current_char/pow_int(10,i))%10;
+		if(current_char != 0 || i == 0 || middle_of_number)
+		{
+			middle_of_number = 1;
+			fputc(current_char+48, file);	
 		}
 	}
 }
@@ -918,6 +937,7 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 							int y_offset_end_vmem,
 							int x_vmem_size)
 {
+	/*
 	unsigned char current_pixel = 0;
 
 	int src_plane = 0;
@@ -975,6 +995,33 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 					}
 				}
 			}	
+		}
+	}
+
+	*/
+
+	outport(GFX_CONTROLLER, 0x08);
+
+	for(x=0; x<x_offset_end_vmem-x_offset_start_vmem; x++)
+	{
+		if(x==0)
+		{
+			outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
+		}
+		else
+		if(x==x_offset_end_vmem-x_offset_start_vmem-1)
+		{
+			outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
+		}
+		else
+		if(x==1)
+		{
+			outport(SEQUENCER, ((0xf<<8)+0x02));
+		}
+		for(y=0; y<y_offset_end_vmem-y_offset_start_vmem; y++)
+		{	
+			current_pixel = *(location+x_offset_start_vmem>>2+y*(x_vmem_size>>2));		
+			*(x_pos_fbuffer>>2+(y_pos_fbuffer+y)*(SCREEN_WIDTH>>2)) = 0;	
 		}
 	}
 }
