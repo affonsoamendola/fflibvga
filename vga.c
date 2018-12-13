@@ -27,7 +27,30 @@ unsigned char far* draw_buffer = 0xA0004B00L;
 
 unsigned char far* rom_char_set = 0xF000FA6EL;
 
+int CURRENT_RES_X = 320;
+int CURRENT_RES_Y = 240;
+
 int current_video_mode = TEXT_MODE;
+
+int get_res_x()
+{
+	return CURRENT_RES_X;
+}
+
+int get_res_y()
+{
+	return CURRENT_RES_Y;
+}
+
+unsigned char far* get_draw_buffer()
+{
+	return draw_buffer;
+}
+
+unsigned char far* get_frame_buffer()
+{
+	return frame_buffer;
+}
 
 void set_color(unsigned char color_index, unsigned char red, unsigned char green, unsigned char blue)
 {
@@ -49,6 +72,25 @@ void set_pallette(unsigned char* pallette, int start_index, int end_index)
 			outportb(DAC_DATA,*(pallette+(i*3)+j));
 		}
 	}
+}
+
+int pow_int(int number, int to_the_power_of)
+{
+	int i = 0;
+	int holder = 0;
+
+	if(to_the_power_of == 0)
+	{
+		return 1;
+	}
+
+	holder = number;
+	for(i = 0; i< (to_the_power_of-1); i++)
+	{
+		holder = holder * number;
+	}
+
+	return holder;
 }
 
 void fputi(int number, int size, FILE * file)
@@ -253,6 +295,9 @@ void set_graphics_mode(int mode)
 			mov ax,0013h;
 			int 10h;
 			}
+
+		CURRENT_RES_X = 320;
+		CURRENT_RES_Y = 200;
 	}
 	if(mode == GRAPHICS_MODEX)
 	{
@@ -289,6 +334,9 @@ void set_graphics_mode(int mode)
 			mov cx,320*240/4;
 			rep stosw;
 		}
+
+		CURRENT_RES_X = 320;
+		CURRENT_RES_Y = 240;
 	}
 	if(mode == GRAPHICS_MODEZ)
 	{
@@ -332,6 +380,9 @@ void set_graphics_mode(int mode)
 			mov cx,320*400/8;
 			rep stosw;
 			}
+
+		CURRENT_RES_X = 320;
+		CURRENT_RES_Y = 400;
 	}
 	current_video_mode = mode;
 }
@@ -565,7 +616,10 @@ void draw_line_v(int x, int y1, int y2, int color)
 
 void flip_front_page()
 {	
-	copy_vmem_to_dbuffer_latched(draw_buffer, frame_buffer, (SCREEN_WIDTH/4)*SCREEN_HEIGHT);
+	if(current_video_mode == GRAPHICS_MODEX)
+	{
+		copy_vmem_to_location_latched(draw_buffer, frame_buffer, (CURRENT_RES_X/4)*CURRENT_RES_Y, 0);
+	}
 }
 
 void fill_rectangle(int x1, int x2, int y1, int y2, int color)
@@ -767,6 +821,23 @@ void print_string(int x, int y, int color, char *string, int transparent)
 	}
 }
 
+void draw_message_box(char *line1, 
+					  char *line2, 
+					  char *line3, 
+					  int line_spacing, int text_color, int back_color, int line_color)
+{
+	fill_rectangle(	20, 
+					CURRENT_RES_X-20, 
+					(CURRENT_RES_Y>>1)-4-line_spacing-8-line_spacing*2, 
+					(CURRENT_RES_Y>>1)+4+line_spacing+8+line_spacing*2, 
+					back_color);
+
+	print_string( 28, (CURRENT_RES_Y>>1)-4-line_spacing-8, text_color, line1, 1);
+	print_string( 28, (CURRENT_RES_Y>>1)-4, text_color, line2, 1);
+	print_string( 28, (CURRENT_RES_Y>>1)+4+line_spacing, text_color, line3, 1);
+}
+
+
 void load_pgm(char* filename, unsigned char far * allocated_mem, int x_size, int y_size)
 {	
 	FILE * file;
@@ -784,148 +855,188 @@ void load_pgm(char* filename, unsigned char far * allocated_mem, int x_size, int
 	int file_x = 0;
 	int file_y = 0;
 
-	file = fopen(filename, "r");
-
-	if(file == NULL)
+	if(current_video_mode == GRAPHICS_MODEX)
 	{
-		set_graphics_mode(TEXT_MODE);
-		printf("ERROR OPENING FILE: %s", filename);
-		exit(EXIT_FAILURE);
-	}
+		file = fopen(filename, "r");
 
-	current_char = fgetc(file);
-	if(current_char != 'P')format_error = 1;
-	current_char = fgetc(file);
-	if(current_char != '2')format_error = 1;
-	current_char = fgetc(file);
-	if(current_char != '\n')format_error = 1;
+		if(file == NULL)
+		{
+			set_graphics_mode(TEXT_MODE);
+			printf("ERROR OPENING FILE: %s", filename);
+			exit(EXIT_FAILURE);
+		}
 
-	for(i= 0; i<4;i++)
-	{	
 		current_char = fgetc(file);
-		if(current_char >= 48 && current_char <= 58)
-		{
-			file_x = file_x*10 + current_char - 48;
-			
-		}
-		else if(current_char == 32)
-		{
-			break;
-		}
-		else
-		{
-			format_error = 1;
-		}
-	}
-
-	if(file_x != x_size)
-	{
-		set_graphics_mode(TEXT_MODE);
-		printf("WRONG X SIZE FOR %s", filename);
-		printf("EXPECTING %d", x_size);
-		printf("GOT %d", file_x);
-		exit(EXIT_FAILURE);
-	}
-	for(i= 0; i<4;i++)
-	{	
+		if(current_char != 'P')format_error = 1;
 		current_char = fgetc(file);
-		if(current_char >= 48 && current_char <= 58)
-		{
-			file_y = file_y*10 + current_char - 48;
-		}
-		else if(current_char == '\n')
-		{
-			break;
-		}
-		else
-		{
-			format_error = 1;
-		}
-	}
-
-	if(file_y != y_size)
-	{
-		set_graphics_mode(TEXT_MODE);
-		printf("WRONG Y SIZE FOR %s", filename);
-		printf("EXPECTING %d", y_size);
-		printf("GOT %d", file_y);
-		exit(EXIT_FAILURE);
-	}
-
-	current_number = 0;
-
-	for(i= 0; i<4;i++)
-	{	
+		if(current_char != '2')format_error = 1;
 		current_char = fgetc(file);
-		if(current_char >= 48 && current_char <= 58)
-		{
-			current_number = current_number*10 + current_char - 48;
-		}
-		else if(current_char == '\n')
-		{
-			break;
-		}
-		else
-		{
-			format_error = 1;
-		}
-	}
+		if(current_char != '\n')format_error = 1;
 
-	current_number = 0;
-
-	for(y = 0; y< y_size; y++)
-	{
-		for(x = 0; x < x_size; x++)
-		{
-			outport(SEQUENCER, ((0x1<<(x%4))<<8)+0x02);
-			for(j = 0; j<4; j++)
-			{	
-				current_char = fgetc(file);
-
-				if(current_char >= 48 && current_char <= 58)
-				{
-					current_number = current_number*10 + current_char - 48;
-				}
-				else if(current_char == '\n')
-				{
-					break;
-				}
-				else
-				{
-					format_error = 1;
-				}
+		for(i= 0; i<4;i++)
+		{	
+			current_char = fgetc(file);
+			if(current_char >= 48 && current_char <= 58)
+			{
+				file_x = file_x*10 + current_char - 48;
+				
 			}
-			*(allocated_mem+(y*x_size>>2)+(x>>2)) = (unsigned char)current_number;		
-			current_number = 0;
+			else if(current_char == 32)
+			{
+				break;
+			}
+			else
+			{
+				format_error = 1;
+			}
 		}
-	}
 
-	if(format_error == 1)
-	{
-		set_graphics_mode(TEXT_MODE);
-		printf("FILE IS NOT PGM, OR IS CORRUPTED SOMEHOW, CHECK YO FILES YO, filename: ", filename);
-		exit(EXIT_FAILURE);
+		if(file_x != x_size)
+		{
+			set_graphics_mode(TEXT_MODE);
+			printf("WRONG X SIZE FOR %s", filename);
+			printf("EXPECTING %d", x_size);
+			printf("GOT %d", file_x);
+			exit(EXIT_FAILURE);
+		}
+		for(i= 0; i<4;i++)
+		{	
+			current_char = fgetc(file);
+			if(current_char >= 48 && current_char <= 58)
+			{
+				file_y = file_y*10 + current_char - 48;
+			}
+			else if(current_char == '\n')
+			{
+				break;
+			}
+			else
+			{
+				format_error = 1;
+			}
+		}
+
+		if(file_y != y_size)
+		{
+			set_graphics_mode(TEXT_MODE);
+			printf("WRONG Y SIZE FOR %s", filename);
+			printf("EXPECTING %d", y_size);
+			printf("GOT %d", file_y);
+			exit(EXIT_FAILURE);
+		}
+
+		current_number = 0;
+
+		for(i= 0; i<4;i++)
+		{	
+			current_char = fgetc(file);
+			if(current_char >= 48 && current_char <= 58)
+			{
+				current_number = current_number*10 + current_char - 48;
+			}
+			else if(current_char == '\n')
+			{
+				break;
+			}
+			else
+			{
+				format_error = 1;
+			}
+		}
+
+		current_number = 0;
+
+		for(y = 0; y< y_size; y++)
+		{
+			for(x = 0; x < x_size; x++)
+			{
+				outport(SEQUENCER, ((0x1<<(x%4))<<8)+0x02);
+				for(j = 0; j<4; j++)
+				{	
+					current_char = fgetc(file);
+
+					if(current_char >= 48 && current_char <= 58)
+					{
+						current_number = current_number*10 + current_char - 48;
+					}
+					else if(current_char == '\n')
+					{
+						break;
+					}
+					else
+					{
+						format_error = 1;
+					}
+				}
+				*(allocated_mem+(y*x_size>>2)+(x>>2)) = (unsigned char)current_number;		
+				current_number = 0;
+			}
+		}
+
+		if(format_error == 1)
+		{
+			set_graphics_mode(TEXT_MODE);
+			printf("FILE IS NOT PGM, OR IS CORRUPTED SOMEHOW, CHECK YO FILES YO, filename: ", filename);
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
-void copy_vmem_to_dbuffer_latched (	unsigned char far* source,
-									unsigned char far* destination,
-									int bytes)
+void copy_vmem_to_location_latched (	unsigned char far* source,
+										unsigned char far* destination,
+										int bytes,
+										int dest_offset)
 {
 	unsigned char current_pixel = 0;
 
 	int i;
 
-	outport(GFX_CONTROLLER, 0x08);
-	outport(SEQUENCER, (0xff<<8)+0x02);
+	if(current_video_mode == GRAPHICS_MODEX)
+	{
+		outport(GFX_CONTROLLER, 0x08);
+		outport(SEQUENCER, (0xff<<8)+0x02);
 
-	for(i=0; i<bytes; i++)
-	{	
-		current_pixel = *(source+i);		
-		*(destination+i) = 0;	
+		for(i=0; i<bytes; i++)
+		{	
+			current_pixel = *(source+i);		
+			*(dest_offset+destination+i) = 0;	
+		}
+
+		outport(GFX_CONTROLLER + 1, 0x0ff);	
 	}
+}
 
-	outport(GFX_CONTROLLER + 1, 0x0ff);	
+void copy_vmem_to_dbuffer_latched (	unsigned char far* source,
+									int bytes,
+									int dest_offset)
+{
+	copy_vmem_to_location_latched(source, draw_buffer, bytes, dest_offset);
+}
+
+void draw_vmem_to_dbuffer_latched (	unsigned char far* source,
+									int latchedColumns,
+									int lines,
+									int dest_offset)
+{
+	unsigned char current_pixel = 0;
+
+	int x, y;
+
+	if(current_video_mode == GRAPHICS_MODEX)
+	{
+		outport(GFX_CONTROLLER, 0x08);
+		outport(SEQUENCER, (0xff<<8)+0x02);
+
+		for(y=0; y<lines; y++)
+		{
+			for(x=0; x<latchedColumns; x++)
+			{	
+				current_pixel = *(source+y*latchedColumns+x);		
+				*(dest_offset+draw_buffer+y*(CURRENT_RES_X>>2)+x) = 0;	
+			}
+		}
+		outport(GFX_CONTROLLER + 1, 0x0ff);	
+	}
 }
 
 void copy_vmem_to_dbuffer(	unsigned char far * location, 
@@ -937,9 +1048,13 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 							int y_offset_end_vmem,
 							int x_vmem_size)
 {
-	/*
+
+	int x;
+	int y;
+
 	unsigned char current_pixel = 0;
 
+	/*
 	int src_plane = 0;
 	int dest_plane = 0;
 
@@ -1000,28 +1115,31 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 
 	*/
 
-	outport(GFX_CONTROLLER, 0x08);
-
-	for(x=0; x<x_offset_end_vmem-x_offset_start_vmem; x++)
+	if(current_video_mode == GRAPHICS_MODEX)
 	{
-		if(x==0)
+		outport(GFX_CONTROLLER, 0x08);
+
+		for(x=0; x<x_offset_end_vmem-x_offset_start_vmem; x++)
 		{
-			outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
-		}
-		else
-		if(x==x_offset_end_vmem-x_offset_start_vmem-1)
-		{
-			outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
-		}
-		else
-		if(x==1)
-		{
-			outport(SEQUENCER, ((0xf<<8)+0x02));
-		}
-		for(y=0; y<y_offset_end_vmem-y_offset_start_vmem; y++)
-		{	
-			current_pixel = *(location+x_offset_start_vmem>>2+y*(x_vmem_size>>2));		
-			*(x_pos_fbuffer>>2+(y_pos_fbuffer+y)*(SCREEN_WIDTH>>2)) = 0;	
+			if(x==0)
+			{
+				outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
+			}
+			else
+			if(x==x_offset_end_vmem-x_offset_start_vmem-1)
+			{
+				outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
+			}
+			else
+			if(x==1)
+			{
+				outport(SEQUENCER, ((0xf<<8)+0x02));
+			}
+			for(y=0; y<y_offset_end_vmem-y_offset_start_vmem; y++)
+			{	
+				current_pixel = *(location+(x_offset_start_vmem>>2)+y*(x_vmem_size>>2));		
+				*(draw_buffer + (x_pos_fbuffer>>2)+(y_pos_fbuffer+y)*(CURRENT_RES_X>>2)) = 0;	
+			}
 		}
 	}
 }

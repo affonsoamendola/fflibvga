@@ -17,7 +17,6 @@
 #define VGA_H
 
 #define GRAPHICS_MODE13 0x13
-#define GRAPHICS_MODE13DB 0xFE
 #define GRAPHICS_MODEX 0xFD
 #define TEXT_MODE 0x03
 #define GRAPHICS_MODEZ 0xFF
@@ -52,13 +51,19 @@
 
 #define O_RDONLY        0x01
 
-#define SCREEN_WIDTH    320
-#define SCREEN_HEIGHT   240
-
 #define TRANSPARENT_INDEX   0
+
+#define SET_BITS(x,bits) (x|bits)
+#define RESET_BITS(x,bits) (x&~bits)
 
 extern int current_frame_buffer_page;
 extern int current_draw_buffer_page;
+
+int get_res_x();
+int get_res_y();
+
+unsigned char far* get_draw_buffer();
+unsigned char far* get_frame_buffer();
 
 void set_color(unsigned char color_index, unsigned char red, unsigned char green, unsigned char blue);
 void set_pallette(unsigned char* pallette, int start_index, int end_index);
@@ -78,6 +83,8 @@ void draw_line_v(int x, int y1, int y2, int color);
 void frame_page(int page);
 void draw_page(int page);
 
+void draw_message_box(char *line1, char *line2, char *line3, int line_spacing, int text_color, int back_color, int line_color);
+
 void fill_rectangle(int x1, int x2, int y1, int y2, int color);
 
 void print_char(int xc, int yc, char c, int color, int transparent);
@@ -95,6 +102,16 @@ void copy_vmem_to_dbuffer(  unsigned char far * location,
                             int x_vmem_size);
 
 void copy_vmem_to_dbuffer_latched ( unsigned char far * source,
-                                    unsigned char far * destination,
-                                    int bytes);
+                                    int bytes,
+                                    int dest_offset);
+
+void copy_vmem_to_location_latched ( unsigned char far* source,
+                                     unsigned char far* destination,
+                                     int bytes,
+                                     int dest_offset);
+
+void draw_vmem_to_dbuffer_latched ( unsigned char far* source,
+                                    int latchedColumns,
+                                    int lines,
+                                    int dest_offest );
 #endif /* VGA_H */
