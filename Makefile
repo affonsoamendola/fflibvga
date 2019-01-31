@@ -1,7 +1,8 @@
 #Copyright Affonso Amendola 2018
-#libVGAdos
+#fflibvga
+#fofonso's VGA library
 
-LIBNAME = libVGA87
+LIBNAME = fflibvga
 CC = tcc
 LIBRARIAN = tlib
 RM = rm -f
