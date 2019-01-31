@@ -1,4 +1,4 @@
-/*  Copyright 2018 Affonso Amendola
+/*  Copyright 2018-2019 Affonso Amendola
     
     This file is part of dosVGAlib.
     dosVGAlib is free software: you can redistribute it and/or modify
@@ -53,6 +53,57 @@
 
 #define TRANSPARENT_INDEX   0
 
+#define COLOR_BLACK             0
+#define COLOR_DARK_BLUE         1
+#define COLOR_DARK_GREEN        2
+#define COLOR_DARK_CYAN         3
+#define COLOR_DARK_RED          4
+#define COLOR_DARK_PURPLE       5
+#define COLOR_DARK_YELLOW       6
+#define COLOR_LIGHT_GRAY        7
+#define COLOR_DARK_GRAY         8
+#define COLOR_LIGHT_BLUE        9
+#define COLOR_LIGHT_GREEN       10
+#define COLOR_LIGHT_CYAN        11
+#define COLOR_LIGHT_RED         12
+#define COLOR_LIGHT_PURPLE      13
+#define COLOR_LIGHT_YELLOW      14
+#define COLOR_WHITE             15
+
+#define COLOR_GRAY_0            16
+#define COLOR_GRAY_1            17
+#define COLOR_GRAY_2            18
+#define COLOR_GRAY_3            19
+#define COLOR_GRAY_4            20
+#define COLOR_GRAY_5            21
+#define COLOR_GRAY_6            22
+#define COLOR_GRAY_7            23
+#define COLOR_GRAY_8            24
+#define COLOR_GRAY_9            25
+#define COLOR_GRAY_10           26
+#define COLOR_GRAY_11           27
+#define COLOR_GRAY_12           28
+#define COLOR_GRAY_13           29
+#define COLOR_GRAY_14           30
+#define COLOR_GRAY_15           31
+
+#define COLOR_BLUE              32
+#define COLOR_BLUE_1            33
+#define COLOR_PURPLE_1          34
+#define COLOR_PURPLE            35
+#define COLOR_PINK              36
+#define COLOR_PINK_1            37
+#define COLOR_PINK_2            38
+#define COLOR_RED_1             39
+#define COLOR_RED               40
+#define COLOR_ORANGE_1          41
+#define COLOR_ORANGE            42
+#define COLOR_YELLOW_1          43
+#define COLOR_YELLOW            44
+#define COLOR_LIME              45
+#define COLOR_GREEN_1           46
+#define COLOR_GREEN             47
+
 #define SET_BITS(x,bits) (x|bits)
 #define RESET_BITS(x,bits) (x&~bits)
 
@@ -83,7 +134,7 @@ void draw_line_v(int x, int y1, int y2, int color);
 void frame_page(int page);
 void draw_page(int page);
 
-void draw_message_box(char *line1, char *line2, char *line3, int line_spacing, int text_color, int back_color, int line_color);
+void draw_message_box(char *line1, char *line2, char *line3, int line_spacing, int text_color, int back_color);
 
 void fill_rectangle(int x1, int x2, int y1, int y2, int color);
 

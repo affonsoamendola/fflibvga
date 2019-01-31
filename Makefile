@@ -10,11 +10,11 @@ INCLUDE = include;D:\tc\include
 LIB = D:\tc\lib
 CCFLAGS = -c
 
-all: $(LIBNAME).o
+all: $(LIBNAME).OBJ
 
-$(LIBNAME).o:
-	$(CC) "-I$(INCLUDE) -L$(LIB) -o$(LIBNAME).o $(CCFLAGS)" *.c
-	tlib ".\$(LIBNAME).LIB + $(LIBNAME).o"
+$(LIBNAME).OBJ:
+	$(CC) "-I$(INCLUDE) -L$(LIB) -o$(LIBNAME).OBJ $(CCFLAGS)" *.c
+	tlib ".\$(LIBNAME).LIB + $(LIBNAME).OBJ"
 
 clean:
-	$(RM) *.OBJ *.EXE *.LOG *.BAT *.O *.LIB
+	$(RM) *.OBJ *.EXE *.LOG *.BAT *.OBJ *.LIB

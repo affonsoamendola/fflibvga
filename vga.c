@@ -1,4 +1,4 @@
-/*  Copyright 2018 Affonso Amendola
+/*  Copyright 2018-2019 Affonso Amendola
     
     This file is part of dosVGAlib.
     dosVGAlib is free software: you can redistribute it and/or modify
@@ -22,10 +22,10 @@
 
 #include <VGA.H>
 
-unsigned char far* frame_buffer = 0xA0000000;
-unsigned char far* draw_buffer = 0xA0004B00L;
+unsigned char far* frame_buffer = (unsigned char far*)0xA0000000;
+unsigned char far* draw_buffer = (unsigned char far*)0xA0004B00L;
 
-unsigned char far* rom_char_set = 0xF000FA6EL;
+unsigned char far* rom_char_set = (unsigned char far*)0xF000FA6EL;
 
 int CURRENT_RES_X = 320;
 int CURRENT_RES_Y = 240;
@@ -139,6 +139,7 @@ void write_pallette(char * filename, unsigned char* pallette, int start_index, i
 				fputc('\n',file);
 		}
 	}
+	fclose(file);
 }
 
 void load_pallette(char * filename, int size)
@@ -255,6 +256,7 @@ void load_pallette(char * filename, int size)
 		g = 0;
 		b = 0;
 	}
+	fclose(file);
 }
 
 void get_pallette(unsigned char* pallette, int start_index ,int end_index)
@@ -498,8 +500,6 @@ void draw_line_h(int x1, int x2, int y, int color)
 	if(current_video_mode == GRAPHICS_MODEX)
 	{
 		int temp;
-		unsigned int startSequence =0;
-		unsigned int endSequence=0;
 		
 		if(x1>x2)
 		{
@@ -821,10 +821,25 @@ void print_string(int x, int y, int color, char *string, int transparent)
 	}
 }
 
+void print_int(int x, int y, int color, int integer, int transparent)
+{
+	char char_buffer[256];
+	print_string(x, y, color, (char *)itoa(integer, char_buffer, 10), transparent);
+}
+
+void print_string_centralized(int y, int color, char *string, int transparent)
+{
+	int len;
+
+	len = strlen(string);
+
+    print_string(CURRENT_RES_X/2-len*4, y, color, string, transparent);
+}
+
 void draw_message_box(char *line1, 
 					  char *line2, 
 					  char *line3, 
-					  int line_spacing, int text_color, int back_color, int line_color)
+					  int line_spacing, int text_color, int back_color)
 {
 	fill_rectangle(	20, 
 					CURRENT_RES_X-20, 
@@ -968,7 +983,7 @@ void load_pgm(char* filename, unsigned char far * allocated_mem, int x_size, int
 						format_error = 1;
 					}
 				}
-				*(allocated_mem+(y*x_size>>2)+(x>>2)) = (unsigned char)current_number;		
+				*(allocated_mem+(y*(x_size>>2))+(x>>2)) = (unsigned char)current_number;		
 				current_number = 0;
 			}
 		}
@@ -979,6 +994,8 @@ void load_pgm(char* filename, unsigned char far * allocated_mem, int x_size, int
 			printf("FILE IS NOT PGM, OR IS CORRUPTED SOMEHOW, CHECK YO FILES YO, filename: ", filename);
 			exit(EXIT_FAILURE);
 		}
+
+		fclose(file);
 	}
 }
 
@@ -1048,13 +1065,12 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 							int y_offset_end_vmem,
 							int x_vmem_size)
 {
-
+	/*
 	int x;
 	int y;
-
+	*/
 	unsigned char current_pixel = 0;
 
-	/*
 	int src_plane = 0;
 	int dest_plane = 0;
 
@@ -1103,8 +1119,8 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 						*(	draw_buffer + 
 							(x_pos_fbuffer>>2) + 
 							dest_offset +
-							y_pos_fbuffer*(SCREEN_WIDTH>>2) + 
-							y*(SCREEN_WIDTH>>2) + 
+							y_pos_fbuffer*(CURRENT_RES_X>>2) + 
+							y*(CURRENT_RES_X>>2) + 
 							(x>>2))
 							 = current_pixel;
 					}
@@ -1112,9 +1128,7 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 			}	
 		}
 	}
-
-	*/
-
+	/*
 	if(current_video_mode == GRAPHICS_MODEX)
 	{
 		outport(GFX_CONTROLLER, 0x08);
@@ -1141,5 +1155,6 @@ void copy_vmem_to_dbuffer(	unsigned char far * location,
 				*(draw_buffer + (x_pos_fbuffer>>2)+(y_pos_fbuffer+y)*(CURRENT_RES_X>>2)) = 0;	
 			}
 		}
-	}
+	} 
+	*/
 }
