@@ -17,8 +17,12 @@ And that's a really valid question with a really simple answer, which is: "Becau
 
 The functions defined in this library allows you to:
 
-Draw individual pixels
-Draw Vertical and Horizontal lines
-Change the color palette of the VGA
-Load images and display them on screen at any position
-Print characters, strings and integers on screen.
+*Draw individual pixels
+
+*Draw Vertical and Horizontal lines
+
+*Change the color palette of the VGA
+
+*Load images and display them on screen at any position
+
+*Print characters, strings and integers on screen.
