@@ -27,3 +27,8 @@ Load images and display them on screen at any position
 
 Print characters, strings and integers on screen.
 ```
+
+Have fun with it!
+
+And as always,
+Be Excellent to Each Other
