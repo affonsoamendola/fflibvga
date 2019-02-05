@@ -22,1139 +22,807 @@
 
 #include "fflibvga.h"
 
-unsigned char far* frame_buffer = (unsigned char far*)0xA0000000;
-unsigned char far* draw_buffer = (unsigned char far*)0xA0004B00L;
-
 unsigned char far* rom_char_set = (unsigned char far*)0xF000FA6EL;
 
 int CURRENT_RES_X = 320;
 int CURRENT_RES_Y = 240;
 
-int current_video_mode = TEXT_MODE;
+int CURRENT_VIDEO_MODE = VGA_TEXT_MODE;
+
+int DOUBLE_BUFFER_ENABLE = 1;
+
+VMEM_ALLOCATION video_allocation_head;
+
+void init_vga()
+{
+	//Initializes the VGA for use, run this before using any function here.
+
+	video_allocation_head.mem_start = (VMEM*)VMEM_END;
+	video_allocation_head.mem_end = (VMEM*)VMEM_END;
+	video_allocation_head.next_block = &video_allocation_head;
+}
+
+unsigned char far * valloc(unsigned long size)
+{
+	//Allocates memory for use in VMEM.
+	//Receives size of the block to be allocated in bytes.
+	//Returns the address of the start of the allocated area.
+
+	int done = 0;
+	int failed = 0;
+
+	VMEM* current_location;
+
+	VMEM_ALLOCATION * new_block;
+	VMEM_ALLOCATION * current_block = &video_allocation_head;
+
+	current_location = (VMEM*)VMEM_START;
+
+	while(!done)
+	{
+
+		if(current_location + size < (VMEM*)(current_block->next_block->mem_start))
+		{
+			done = 1;
+		}
+		else
+		{
+			current_block = current_block->next_block;
+			current_location = (current_block->mem_end)+1;
+		}
+
+		if(current_location + size > (VMEM *)VMEM_END)
+		{
+			printf("FAILURE ALLOCATING VMEMORY\n");
+			done = 1;
+			failed = 1;
+		}
+	}
+
+	if(failed)
+	{
+		return NULL;
+	}
+	else
+	{
+		new_block = malloc(sizeof(VMEM_ALLOCATION));
+		new_block->mem_start = current_location;
+		new_block->mem_end = current_location + size;
+		new_block->next_block = current_block->next_block;
+		current_block->next_block = new_block;
+		return current_location;
+	}
+}
+
+int vfree(VMEM* location)
+{
+	//Clears the memory for use at VMEM location specified.
+	//Returns -1 on failure and 0 on success.
+
+	int done = 0;
+	int failed = 0;
+
+	VMEM_ALLOCATION * current_allocation = &video_allocation_head;
+
+	while(!done)
+	{
+		if((VMEM*)(current_allocation->next_block)->mem_start == (VMEM*)location)
+		{
+			done = 1;
+		}
+		else
+		{
+			current_allocation = current_allocation->next_block;
+			if(current_allocation == &video_allocation_head)
+			{
+				done = 1;
+				failed = 1;
+			}
+		}
+	}
+
+	if(failed)
+	{
+		return -1;
+	}
+	else
+	{
+		current_allocation->next_block = (current_allocation->next_block)->next_block;
+		return 0;
+	}
+}
 
 int get_res_x()
 {
+
 	return CURRENT_RES_X;
 }
 
 int get_res_y()
 {
+
 	return CURRENT_RES_Y;
 }
 
-unsigned char far* get_draw_buffer()
+void set_double_buffer(int value)
 {
-	return draw_buffer;
+
+	DOUBLE_BUFFER_ENABLE = value;
 }
 
-unsigned char far* get_frame_buffer()
+VMEM* get_draw_buffer()
 {
-	return frame_buffer;
-}
-
-void set_color(unsigned char color_index, unsigned char red, unsigned char green, unsigned char blue)
-{
-	outportb(DAC_WRITE, color_index);
-	outportb(DAC_DATA, red);
-	outportb(DAC_DATA, green);
-	outportb(DAC_DATA, blue);
-}
-
-void set_pallette(unsigned char* pallette, int start_index, int end_index)
-{
-	int i;
-	int j;
-	outportb(DAC_WRITE, start_index);
-	for(i = 0; i <= end_index-start_index; i++)
+	if(DOUBLE_BUFFER_ENABLE == 0)
 	{
-		for(j=0; j<3; j++)
-		{
-			outportb(DAC_DATA,*(pallette+(i*3)+j));
-		}
+		return PAGE_0;
 	}
-}
-
-int pow_int(int number, int to_the_power_of)
-{
-	int i = 0;
-	int holder = 0;
-
-	if(to_the_power_of == 0)
+	else
 	{
-		return 1;
-	}
-
-	holder = number;
-	for(i = 0; i< (to_the_power_of-1); i++)
-	{
-		holder = holder * number;
-	}
-
-	return holder;
-}
-
-void fputi(int number, int size, FILE * file)
-{
-	int i;
-
-	int current_char;
-
-	int middle_of_number = 0;
-
-	for(i = (size-1); i>=0; i--)
-	{
-		current_char = number;
-		current_char = (current_char/pow_int(10,i))%10;
-		if(current_char != 0 || i == 0 || middle_of_number)
-		{
-			middle_of_number = 1;
-			fputc(current_char+48, file);	
-		}
+		return PAGE_1;
 	}
 }
 
-void write_pallette(char * filename, unsigned char* pallette, int start_index, int end_index)
+VMEM* get_frame_buffer()
 {
-	FILE * file;
-	int i;
-	int j;
 
-	unsigned char current_char;
-
-	int middle_of_number;
-
-	file = fopen(filename, "w");
-
-	for (i = 0; i <= (end_index-start_index); i++)
-	{
-		fputi(start_index + i, 3, file);
-		fputc(' ', file);
-
-		for(j = 0; j<3; j++)
-		{
-			fputi((*(pallette+i*3+j)), 3, file);
-			if(j < 2)
-				fputc(' ',file);
-			else
-				fputc('\n',file);
-		}
-	}
-	fclose(file);
+	return PAGE_0;
 }
 
-void load_pallette(char * filename, int size)
-{
-	FILE * file;
-	int i;
-	int j;
-
-	unsigned char r, g, b;
-
-	unsigned char index = 0;
-
-	int format_error = 0;
-
-	unsigned char current_char;
-
-	r = 0;
-	g = 0;
-	b = 0;
-
-	file = fopen(filename, "r");
-	for(j= 0; j<size; j++)
-	{	
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-
-			if(current_char >= 48 && current_char <= 58)
-			{
-				index = index*10 + current_char - 48;
-				
-			}
-			else if(current_char == 32)
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
-
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-
-			if(current_char >= 48 && current_char <= 58)
-			{
-				r = r*10 + current_char - 48;
-				
-			}
-			else if(current_char == 32)
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
-
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-
-			if(current_char >= 48 && current_char <= 58)
-			{
-				g = g*10 + current_char - 48;
-				
-			}
-			else if(current_char == 32)
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
-
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-			
-			if(current_char >= 48 && current_char <= 58)
-			{
-				b = b*10 + current_char - 48;
-				
-			}
-			else if(current_char == '\n')
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
-
-		if(format_error == 1)
-		{
-			set_graphics_mode(TEXT_MODE);
-			printf("FILE IS NOT PLT, OR IS CORRUPTED SOMEHOW, CHECK YO FILES YO, filename: %s", filename);
-			exit(EXIT_FAILURE);
-		}
-
-		outportb(DAC_WRITE, index);
-		outportb(DAC_DATA, r);
-		outportb(DAC_DATA, g);
-		outportb(DAC_DATA, b);
-
-		index = 0;
-		r = 0;
-		g = 0;
-		b = 0;
-	}
-	fclose(file);
-}
-
-void get_pallette(unsigned char* pallette, int start_index ,int end_index)
-{
-	int i;
-	int j;
-
-	outportb(DAC_READ, start_index);
-	for(i = 0; i <= end_index-start_index; i++)
-	{
-		for(j=0; j<3; j++)
-		{
-			*(pallette+(i*3)+j) = inportb(DAC_DATA);
-		}
-	}
-}
-
-unsigned char get_color(unsigned char color_index)
-{
-	outportb(DAC_WRITE, color_index);
-	return inportb(DAC_DATA);
+void flip_front_page()
+{	
+	copy_vmem_to_vmem		(	get_draw_buffer(),
+								get_frame_buffer(),
+								(CURRENT_RES_X>>2)*CURRENT_RES_Y,
+								0);
 }
 
 void set_graphics_mode(int mode)
 {
 	unsigned char data;
-	if(mode == TEXT_MODE)
+	VMEM* draw_buffer;
+
+	draw_buffer = get_draw_buffer();
+
+	if(mode == VGA_TEXT_MODE)
 	{
 		_asm	{
-			mov ax,0003h;
-			int 10h;
-			}
+				mov ax,0003h
+				int 10h
+				}
 	}
 
-	if(mode == GRAPHICS_MODE13)
-	{
-		_asm	{
-			mov ax,0013h;
-			int 10h;
-			}
-
-		CURRENT_RES_X = 320;
-		CURRENT_RES_Y = 200;
-	}
-	if(mode == GRAPHICS_MODEX)
+	if(mode == VGA_GRAPHICS_MODE_X)
 	{
 		_asm 	{
 				mov ax,0013h;
 				int 10h;
 				}
 
-		outport(SEQUENCER, 0x0604);
-		outport(SEQUENCER, 0x0100);
-		outportb(MISC_OUTPUT,0xe3);
-		outport(SEQUENCER, 0x0300);
+		outport(SEQ_ADDRESS,		0x0600 | SEQ_MEMORY_MODE);
+		outport(SEQ_ADDRESS, 		0x0100 | SEQ_RESET);
+		outportb(MISC_OUTPUT_WRITE, 0xE3);
+		outport(SEQ_ADDRESS, 		0x0300 | SEQ_RESET); 
 
-		outportb(CRT_CONTROLLER,0x11);
-		data = inportb(CRT_CONTROLLER+1);
-		data = data & 0x7f;
-		outportb(CRT_CONTROLLER+1,data);
-		outport(CRT_CONTROLLER, 0x0d06);
-		outport(CRT_CONTROLLER, 0x3e07);
-		outport(CRT_CONTROLLER, 0x4109);
-		outport(CRT_CONTROLLER, 0xea10);
-		outport(CRT_CONTROLLER, 0xac11);
-		outport(CRT_CONTROLLER, 0xdf12);
-		outport(CRT_CONTROLLER, 0x0014);
-		outport(CRT_CONTROLLER, 0xe715);
-		outport(CRT_CONTROLLER, 0x0616);
-		outport(CRT_CONTROLLER, 0xe317);
+		outportb(CRTC_ADDRESS,	CRTC_V_RETRACE_END);
+		data = inportb(CRTC_DATA);
+		outportb(CRTC_DATA,	data &(~0x80));
 
-		outport(SEQUENCER, 0x0f02);
+		outport(CRTC_ADDRESS, 		0x0D00 | CRTC_V_TOTAL);
+		outport(CRTC_ADDRESS, 		0x3E00 | CRTC_OVERFLOW);
+		outport(CRTC_ADDRESS, 		0x4100 | CRTC_MAX_SCAN_LINE);
+		outport(CRTC_ADDRESS,		0xEA00 | CRTC_V_RETRACE_START);
+		outport(CRTC_ADDRESS, 		0xAC00 | CRTC_V_RETRACE_END);
+		outport(CRTC_ADDRESS, 		0xDF00 | CRTC_V_ENABLE_END);
+		outport(CRTC_ADDRESS, 		0x0000 | CRTC_UNDERLINE_LOC);
+		outport(CRTC_ADDRESS, 		0xE700 | CRTC_START_V_BLANK);
+		outport(CRTC_ADDRESS, 		0x0600 | CRTC_END_V_BLANK );
+		outport(CRTC_ADDRESS, 		0xE300 | CRTC_CRT_MODE_CTRL);
 
-		_asm {
-			les di,draw_buffer;
-			sub ax,ax
-			mov cx,320*240/4;
-			rep stosw;
-		}
+		outport(SEQ_ADDRESS, 		0x0F00 | SEQ_MAP_MASK);
+
+		_asm 	{
+				les di,draw_buffer
+				sub ax,ax
+				mov cx,320*240/4
+				rep stosw
+				}
 
 		CURRENT_RES_X = 320;
 		CURRENT_RES_Y = 240;
 	}
-	if(mode == GRAPHICS_MODEZ)
-	{
-		int data;
-		_asm	{
-			mov ax,0013h;
-			int 10h;
-			}
 
-		outportb(CRT_CONTROLLER,CRT_MAX_SCANLINE);
-		data = inportb(CRT_CONTROLLER+1);
-		outportb(CRT_CONTROLLER+1,RESET_BITS(data,0x0f));
-
-		outportb(CRT_CONTROLLER,CRT_ADDR_MODE);
-		data=inportb(CRT_CONTROLLER+1);
-		outportb(GFX_CONTROLLER+1,RESET_BITS(data,0x40));
-
-		outportb(CRT_CONTROLLER,CRT_MODE_CONTROL);
-		data=inportb(CRT_CONTROLLER+1);
-		outportb(CRT_CONTROLLER+1,SET_BITS(data,0x40));
-
-		outportb(GFX_CONTROLLER,GFX_WRITE_MODE);
-		data=inportb(GFX_CONTROLLER+1);
-		outportb(GFX_CONTROLLER+1,RESET_BITS(data,0x10));
-
-		outportb(GFX_CONTROLLER,GFX_MISC);
-		data=inportb(GFX_CONTROLLER+1);
-		outportb(GFX_CONTROLLER+1,RESET_BITS(data,0x02));
-
-		outportb(SEQUENCER,SEQ_MEMORY_MODE);
-		data=inportb(SEQUENCER+1);
-		data=RESET_BITS(data,0x08);
-		data=SET_BITS(data,0x04);
-		outportb(SEQUENCER+1,data);
-		outportb(SEQUENCER,SEQ_PLANE_ENABLE);
-		outportb(SEQUENCER+1,0x0f);
-
-		_asm	{
-			les di, draw_buffer;
-			xor ax,ax;
-			mov cx,320*400/8;
-			rep stosw;
-			}
-
-		CURRENT_RES_X = 320;
-		CURRENT_RES_Y = 400;
-	}
-	current_video_mode = mode;
+	CURRENT_VIDEO_MODE = mode;
 }
 
-void fill_screen(int color)
+int get_graphics_mode()
 {
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
+
+	return CURRENT_VIDEO_MODE;
+}
+
+void fill_screen(char color)
+{
+	//Fills the draw_buffer with a certain color
+
+	VMEM* draw_buffer;
+
+	draw_buffer = get_draw_buffer();
+ 
 	_asm	{
-		les di,draw_buffer;
-		mov al,BYTE PTR color;
-		mov ah,al;
-		mov cx,320*200/2;
-		rep stosw;
-		}
-	}
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-	_asm	{
-		mov dx,SEQUENCER;
-		mov al,SEQ_PLANE_ENABLE;
-		mov ah,0fh;
-		out dx,ax;
-		les di,draw_buffer;
-		mov al,BYTE PTR color;
-		mov ah,al;
-		mov cx,(320*240/8);
-		rep stosw;
-		}
-	}
-
-	if(current_video_mode == GRAPHICS_MODEZ)
-	{
-	_asm	{
-		mov dx,SEQUENCER;
-		mov al,SEQ_PLANE_ENABLE;
-		mov ah,0fh;
-		out dx,ax;
-		les di,draw_buffer;
-		mov al,BYTE PTR color;
-		mov ah,al;
-		mov cx,320*400/8;
-		rep stosw;
-		}
-	}
+			mov dx,	SEQ_ADDRESS
+			mov al,	SEQ_MAP_MASK
+			mov ah,	0x0F
+			out dx,	ax
+			les di,	draw_buffer
+			mov al,	BYTE PTR color
+			mov ah,	al
+			mov cx,	(320*240/8)
+			rep stosw
+			}
 }
 
-void set_pixel(int x, int y, int color)
+void set_pixel(POINT2 pos, int color)
 {
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		draw_buffer[(y<<8)+(y<<6)+x] = (unsigned char)color;
-	}
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		outport(SEQUENCER, 0x02+(1<<((x%4)+8)));
-		draw_buffer[(y<<6)+(y<<4)+(x>>2)] = (unsigned char)color;
-	}
+	char bitmask;
+	int offset;
 
-	if(current_video_mode == GRAPHICS_MODEZ)
+	bitmask = 0x01 << (pos.x & 0x03);
+	offset = pos.y*(CURRENT_RES_X>>2) + (pos.x>>2);
+
+	_asm	{
+			mov dx,	SEQ_ADDRESS
+			mov al,	SEQ_MAP_MASK
+			mov ah,	bitmask
+			out dx, ax
+			}
+	
+	get_draw_buffer()[offset] = (unsigned char)color;
+}
+
+void draw_line_h(POINT2 start_point, int length, char color)
+{
+	//Draws a horizontal line starting at start_point with the specified length. and color.
+	//Goes from left to right. 
+
+	char bitmask_left;
+	char bitmask_right;
+	char bitmask_center;
+
+	int y_offset;
+
+	int i;
+
+	y_offset = start_point.y*(CURRENT_RES_X>>2);
+
+	bitmask_left = 0x0F << (start_point.x & 0x03);
+	bitmask_right = ~(0x0F << ((start_point.x + length) & 0x03));
+	
+	bitmask_left &= 0x0F;
+	bitmask_right &= 0x0F;
+
+	bitmask_center = bitmask_left & bitmask_right;
+
+	if(start_point.x>>2 != (start_point.x + length)>>2)
 	{
 		_asm	{
-			mov dx,SEQUENCER;
-			mov al,SEQ_PLANE_ENABLE;
-			mov cl,BYTE PTR x;
-			and cl,03h;
-			mov ah,1;
-			shl ah,cl;
-			out dx,ax;
-			}
-		draw_buffer[(y<<6)+(y<<4)+(x>>2)] = (unsigned char)color;
-	}
-}
-
-int get_pixel(int x, int y)
-{
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		return((int)(draw_buffer[(y<<8)+(y<<6)+x]));
-	}
-
-	if(current_video_mode == GRAPHICS_MODEZ)
-	{
-		_asm	{
-			mov dx,SEQUENCER;
-			mov al,SEQ_PLANE_ENABLE;
-			mov cl,BYTE PTR x;
-			and cl,03h;
-			mov ah,1;
-			shl ah,cl;
-			out dx,ax;
-			}
-		return((int)(draw_buffer[(y<<6)+(y<<4)+(x>>2)]));
-	}
-	return -1;
-}
-
-void draw_line_h(int x1, int x2, int y, int color)
-{
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		int temp;
-
-		if(x1>x2)
-		{
-			temp = x1;
-			x1 = x2;
-			x2 = temp;
-		}
-
-		_fmemset((unsigned char far *)(draw_buffer + ((y<<8) +(y<<6))+x1),(unsigned char)color, x2-x1+1);
-	}
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		int temp;
-		
-		if(x1>x2)
-		{
-			temp=x1;
-			x1=x2;
-			x2=temp;
-		}
-
-		if(x2>>2 != x1>>2)
-		{
-			_asm 	{
-						mov dx, SEQUENCER
-						mov al, 02h
-						mov cl, BYTE PTR x1
-						and cl, 03h
-						mov bl, 0fh
-						shl bl, cl
-						mov ah, bl
-						out dx, ax
-					}
-
-			draw_buffer[(y<<6)+(y<<4)+(x1>>2)] = (unsigned char)color;
-
-			_asm 	{
-						mov dx, SEQUENCER
-						mov ax, 0f02h
-						out dx, ax
-					}
-			
-			_fmemset((unsigned char far *)(draw_buffer + ((y<<6) +(y<<4)+(x1>>2)+1)),(unsigned char)color, (x2-x2%4-x1-4+x1%4)>>2);
-			
-			_asm 	{ 
-						mov dx, SEQUENCER
-						mov al, 02h
-						mov bl, BYTE PTR x2
-						and bl, 03h
-						mov cl, 03h
-						sub cl, bl
-						mov bl, 0fh
-						shr bl, cl
-						mov ah, bl
-						out dx, ax
-					}
-
-			draw_buffer[(y<<6)+(y<<4)+(x2>>2)] = (unsigned char)color;
-		}
-		else
-		{
-			int i = 0;
-			int sequence = 0x0;
-			for(i = x1%4; i<= x2%4;i++)
-			{
-				sequence += 0x01<<i;
-			}
-			sequence = sequence<<8;
-			outport(SEQUENCER, sequence+0x02);
-			draw_buffer[(y<<6)+(y<<4)+(x1>>2)] = (unsigned char)color;
-		}
-	}
-}
-
-void draw_line_v(int x, int y1, int y2, int color)
-{
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		int temp;
-		int length;
-		int i;
-		unsigned char far *start_offset;
-
-		if(y1>y2)
-		{
-			temp = y1;
-			y1 = y2;
-			y2 = temp;
-		}
-
-		start_offset = draw_buffer + ((y1<<8) + (y1<<6)) + x;
-
-		length = y2-y1;
-
-		for(i=0;i<=length;i++)
-		{
-			*start_offset = (unsigned char)color;
-			start_offset+=320;
-		}
-	}
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		int temp;
-		int length;
-		int i;
-		unsigned char far *start_offset;
-
-		if(y1>y2)
-		{
-			temp = y1;
-			y1 = y2;
-			y2 = temp;
-		}
-
-		start_offset = draw_buffer + ((y1<<6) + (y1<<4) + (x>>2));
-
-		length = y2-y1;
-		outport(SEQUENCER, 0x02+(1<<((x%4)+8)));
-
-		for(i=0;i<=length;i++)
-		{
-			*start_offset = (unsigned char)color;
-			start_offset+=80;
-		}
-	}
-}
-
-void flip_front_page()
-{	
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		copy_vmem_to_location_latched(draw_buffer, frame_buffer, (CURRENT_RES_X/4)*CURRENT_RES_Y, 0);
-	}
-}
-
-void fill_rectangle(int x1, int x2, int y1, int y2, int color)
-{
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		int temp;
-		int i;
-		int height;
-		unsigned char far * start_offset;
-
-		if(x1>x2)
-		{
-			temp = x1;
-			x1 = x2;
-			x2 = temp;
-		}
-		if(y1>y2)
-		{
-			temp = y1;
-			y1 = y2;
-			y2 = temp;
-		}
-
-		start_offset = draw_buffer + ((y1<<8) + (y1<<6)) + x1;
-		height = y2-y1;
-
-		for(i=0;i<=height;i++)
-		{
-				_fmemset(start_offset,(unsigned char)color, x2-x1+1);
-				start_offset+=320;
-		}
-	}
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		int temp;
-		int i;
-		int height;
-		unsigned char far * start_offset;
-
-		if(x1>x2)
-		{
-			temp = x1;
-			x1 = x2;
-			x2 = temp;
-		}
-		if(y1>y2)
-		{
-			temp = y1;
-			y1 = y2;
-			y2 = temp;
-		}
-
-		start_offset = draw_buffer + ((y1<<6) + (y1<<4));
-		height = y2-y1;
-
-		for(i=0;i<=height;i++)
-		{
-			if(x2>>2 != x1>>2)
-			{
-				_asm 	{
-							mov dx, SEQUENCER
-							mov al, 02h
-							mov cl, BYTE PTR x1
-							and cl, 03h
-							mov bl, 0fh
-							shl bl, cl
-							mov ah, bl
-							out dx, ax
-						}
-						
-				*(start_offset+(x1>>2)) = (unsigned char)color;
-
-				_asm 	{
-							mov dx, SEQUENCER
-							mov ax, 0f02h
-							out dx, ax
-						}
-				
-				_fmemset((unsigned char far *)(start_offset+(x1>>2)+1),(unsigned char)color, (x2-x2%4-x1-4+x1%4)>>2);
-				
-				_asm 	{ 
-							mov dx, SEQUENCER
-							mov al, 02h
-							mov bl, BYTE PTR x2
-							and bl, 03h
-							mov cl, 03h
-							sub cl, bl
-							mov bl, 0fh
-							shr bl, cl
-							mov ah, bl
-							out dx, ax
-						}
-
-				*(start_offset+(x2>>2)) = (unsigned char)color;
-				start_offset+=80;
-			}
-			else
-			{
-				int i = 0;
-				int sequence = 0x0;
-				for(i = x1%4; i<= x2%4;i++)
-				{
-					sequence += 0x01<<i;
+				mov dx,	SEQ_ADDRESS
+				mov al,	SEQ_MAP_MASK
+				mov ah,	bitmask_left
+				out dx, ax
 				}
-				sequence = sequence<<8;
-				outport(SEQUENCER, sequence+0x02);
-				*start_offset = (unsigned char)color;
-				start_offset +=80;
-			}
+
+		get_draw_buffer()[y_offset + (start_point.x>>2)] = color;
+
+		_asm	{
+				mov dx,	SEQ_ADDRESS
+				mov al,	SEQ_MAP_MASK
+				mov ah,	bitmask_right
+				out dx, ax
+				}
+
+		get_draw_buffer()[y_offset + ((start_point.x + length)>>2)] = color;
+
+		_asm	{
+				mov dx,	SEQ_ADDRESS
+				mov al,	SEQ_MAP_MASK
+				mov ah,	0x0F
+				out dx, ax
+				}
+
+		for(i = (start_point.x>>2)+1; i < ((start_point.x + length)>>2); i++)
+		{
+			get_draw_buffer()[y_offset + i] = color;
 		}
+	}
+	else
+	{
+		asm	{
+				mov dx,	SEQ_ADDRESS
+				mov al,	SEQ_MAP_MASK
+				mov ah,	bitmask_center
+				out dx, ax
+				}
+
+		get_draw_buffer()[y_offset + (start_point.x>>2)] = color;
 	}
 }
 
-void print_char(int xc, int yc, char c, int color, int transparent)
+void draw_line_v(POINT2 start_point, int height, char color)
 {
-	if(current_video_mode == GRAPHICS_MODE13)
-	{
-		int offset, x, y;
+	char bitmask;
 
-		unsigned char far *work_char;
+	int start_offset;
+	int i;
 
-		unsigned char bit_mask;
+	start_offset = start_point.y*(CURRENT_RES_X>>2) + (start_point.x>>2);
 
-		work_char = rom_char_set + c*8;
+	bitmask = 0x01 << (start_point.x & 3);
 
-		offset = (yc<<8)+(yc<<6)+xc;
-
-		for(y=0; y<8; y++)
-		{
-			bit_mask = 0x80;
-			for(x=0; x<8; x++)
-			{
-				if((*work_char & bit_mask))
-					draw_buffer[offset+x] = (unsigned char)color;
-				else
-				if(!transparent)
-					draw_buffer[offset+x] = 0;
-
-				bit_mask = (bit_mask>>1);
+	_asm	{
+			mov dx,	SEQ_ADDRESS
+			mov al,	SEQ_MAP_MASK
+			mov ah,	bitmask
+			out dx, ax
 			}
-			offset+=320;
-			work_char++;
-		}
-	}
 
-	if(current_video_mode == GRAPHICS_MODEX)
+	for(i = 0; i < height; i++)
 	{
-		int offset, x, y;
-
-		unsigned char far *work_char;
-
-		unsigned char bit_mask;
-		unsigned char sequence;
-
-		work_char = rom_char_set + c*8;
-
-		offset = (yc<<6)+(yc<<4);
-		
-		for(y=0; y<8; y++)
-		{
-			bit_mask = 0x88;
-			for(x=0; x<4; x++)
-			{
-				sequence = (xc+x)%4;
-				outport(SEQUENCER, ((0x1<<sequence)<<8)+0x02);
-				if((*work_char & (bit_mask & 0xf0)))
-					draw_buffer[offset+((xc+x)>>2)] = (unsigned char)color;
-				else
-				if(!transparent)
-					draw_buffer[offset+((xc+x)>>2)] = 0;
-		
-				if((*work_char & (bit_mask & 0x0f)))
-					draw_buffer[offset+((xc+x)>>2)+1] = (unsigned char)color;
-				else
-				if(!transparent)
-					draw_buffer[offset+((xc+x)>>2)+1] = 0;
-				
-				bit_mask = (bit_mask>>1);
-			}
-			offset+=80;
-			work_char++;
-		}
+		get_draw_buffer()[start_offset + i*(CURRENT_RES_X>>2)] = color;
 	}
 }
 
-void print_string(int x, int y, int color, char *string, int transparent)
+void draw_rectangle_filled(RECT rectangle, char color)
 {
-	if(current_video_mode == GRAPHICS_MODE13 || current_video_mode == GRAPHICS_MODEX)
+	int i;
+	POINT2 current_line_start;
+	
+	current_line_start.x = rectangle.start_point.x;
+	current_line_start.y = rectangle.start_point.y;
+
+	for(i = 0; i < rectangle.size_y; i++)
 	{
-		int i, length;
-
-		length = strlen(string);
-
-		for(i=0; i<length; i++)
-		{
-			print_char(x+(i<<3), y, string[i], color, transparent);
-		}
+		draw_line_h(current_line_start, rectangle.size_x, color);
+		current_line_start.y += 1;
 	}
 }
 
-void print_int(int x, int y, int color, int integer, int transparent)
+void print_char(	POINT2 position, char c, 
+					char fore_color, char back_color, int fill_background)
+{
+	int offset, x, y;
+
+	unsigned char far *work_char;
+
+	unsigned char bit_mask;
+	unsigned char sequence;
+
+	work_char = rom_char_set + c*8;
+
+	offset = position.y*(CURRENT_RES_X>>2);
+	
+	for(y=0; y<8; y++)
+	{
+		bit_mask = 0x88;
+		for(x=0; x<4; x++)
+		{
+			sequence = 0x01<<((position.x+x) & 3);
+
+			_asm	{
+					mov dx,	SEQ_ADDRESS
+					mov al,	SEQ_MAP_MASK
+					mov ah,	sequence
+					out dx, ax
+					}
+
+			if((*work_char & (bit_mask & 0xf0)))
+				get_draw_buffer()[offset+((position.x+x)>>2)] = (unsigned char)fore_color;
+
+			else if(fill_background)
+				get_draw_buffer()[offset+((position.x+x)>>2)] = (unsigned char)back_color;
+	
+			
+			if((*work_char & (bit_mask & 0x0f)))
+				get_draw_buffer()[offset+((position.x+x)>>2)+1] = (unsigned char)fore_color;
+			
+			else if(fill_background)
+				get_draw_buffer()[offset+((position.x+x)>>2)+1] = (unsigned char)back_color;
+			
+			bit_mask = (bit_mask>>1);
+		}
+
+		offset += (CURRENT_RES_X>>2);
+		work_char++;
+	}
+}
+
+void print_string(	POINT2 position, char *string, 
+					char fore_color, char back_color, int fill_background)
+{
+	int i, length;
+	POINT2 current_position;
+
+	current_position = position;
+
+	length = strlen(string);
+
+	for(i=0; i<length; i++)
+	{
+		print_char(current_position, string[i], fore_color, back_color, fill_background);
+		current_position.x += 8;
+	}
+}
+
+void print_int(	POINT2 position, int integer, 
+				char fore_color, char back_color, int fill_background)
 {
 	char char_buffer[256];
-	print_string(x, y, color, (char *)itoa(integer, char_buffer, 10), transparent);
+
+	print_string(position, (char *)itoa(integer, char_buffer, 10), fore_color, back_color, fill_background);
 }
 
-void print_string_centralized(int y, int color, char *string, int transparent)
+void print_string_centralized(	int y, char *string, 
+								char fore_color, char back_color, int fill_background)
 {
 	int len;
+	POINT2 position;
 
 	len = strlen(string);
 
-    print_string(CURRENT_RES_X/2-len*4, y, color, string, transparent);
+	position.y = y;
+	position.x = CURRENT_RES_X/2-len*4;
+
+    print_string(position, string, fore_color, back_color, fill_background);
 }
 
-void draw_message_box(char *line1, 
-					  char *line2, 
-					  char *line3, 
-					  int line_spacing, int text_color, int back_color)
+IMAGE * load_fis_image(char* filename, int in_vmem, int do_load_palette, unsigned char palette_start_location)
 {
-	fill_rectangle(	20, 
-					CURRENT_RES_X-20, 
-					(CURRENT_RES_Y>>1)-4-line_spacing-8-line_spacing*2, 
-					(CURRENT_RES_Y>>1)+4+line_spacing+8+line_spacing*2, 
-					back_color);
+	unsigned int magic_number;
+	unsigned char adapter_type;
 
-	print_string( 28, (CURRENT_RES_Y>>1)-4-line_spacing-8, text_color, line1, 1);
-	print_string( 28, (CURRENT_RES_Y>>1)-4, text_color, line2, 1);
-	print_string( 28, (CURRENT_RES_Y>>1)+4+line_spacing, text_color, line3, 1);
-}
+	unsigned char sequence_indicator;
 
+	unsigned char sequence_length;
+	unsigned char sequence_index;
 
-void load_pgm(char* filename, unsigned char far * allocated_mem, int x_size, int y_size)
-{	
+	int i;
+
+	int bitmask;
+
+	long count;
+
+	char buffer;
+
+	IMAGE * image;	
 	FILE * file;
-	int current_char;
-	int i;
-	int j;
 
-	int x;
-	int y;
+	file = fopen(filename, "rb");
 
-	int current_number = 0;
+	magic_number = 0;
 
-	int format_error = 0;
-
-	int file_x = 0;
-	int file_y = 0;
-
-	if(current_video_mode == GRAPHICS_MODEX)
+	if(file == NULL)
 	{
-		file = fopen(filename, "r");
+		set_graphics_mode(VGA_TEXT_MODE);
+		printf("FIS - Couldn't find file : %s\n", filename);
+		exit(-1);
+	} 
 
-		if(file == NULL)
+	magic_number |= ((int)getc(file))<<8;
+	magic_number |= ((int)getc(file));
+
+	if(magic_number != 0xF0F0) 
+	{
+		set_graphics_mode(VGA_TEXT_MODE);
+		printf("FIS - Magic number is wrong, are you sure this is a FIS file? File: %s\n", filename);
+		exit(-1);
+	}
+
+	adapter_type = getc(file);
+
+	if(adapter_type != 0) 
+	{
+		set_graphics_mode(VGA_TEXT_MODE);
+		printf("FIS - This file is not for the VGA board, so this function cant load it properly. File: %s\n", filename);
+		exit(-1);
+	}
+
+	image = malloc(sizeof(IMAGE));
+
+	image->size_x |= ((int)getc(file))<<8;
+	image->size_x |= ((int)getc(file));
+
+	image->size_y |= ((int)getc(file))<<8;
+	image->size_y |= ((int)getc(file));
+
+	image->in_vmem = in_vmem;
+
+	image->last_index_used = (unsigned char)getc(file);
+
+	if((int)(image->last_index_used)+(int)palette_start_location > 255)
+	{
+		set_graphics_mode(VGA_TEXT_MODE);
+		printf("FIS - Not enough palette indexes to allocate for this image, change the palette start index for file: %s\n", filename);
+		exit(-1);
+	} 
+
+	image->palette_start_location = palette_start_location;
+
+	sequence_indicator = (unsigned char)getc(file);
+
+	for(i = 0; i < 23; i++)
+	{
+		buffer = (unsigned char)getc(file);
+	}
+
+	count = 0;
+
+	if(in_vmem)
+	{
+		image->data = valloc(((image->size_x>>2)*(image->size_y)));
+		if(image->data == NULL) 
 		{
-			set_graphics_mode(TEXT_MODE);
-			printf("ERROR OPENING FILE: %s", filename);
-			exit(EXIT_FAILURE);
+			set_graphics_mode(VGA_TEXT_MODE);
+			printf("FIS - Couldn't allocate video memory for image file: %s\n", filename);
+			exit(-1);
 		}
-
-		current_char = fgetc(file);
-		if(current_char != 'P')format_error = 1;
-		current_char = fgetc(file);
-		if(current_char != '2')format_error = 1;
-		current_char = fgetc(file);
-		if(current_char != '\n')format_error = 1;
-
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-			if(current_char >= 48 && current_char <= 58)
-			{
-				file_x = file_x*10 + current_char - 48;
-				
-			}
-			else if(current_char == 32)
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
-
-		if(file_x != x_size)
+	}
+	else
+	{
+		image->data = malloc((image->size_x)*(image->size_y));
+		if(image->data == NULL) 
 		{
-			set_graphics_mode(TEXT_MODE);
-			printf("WRONG X SIZE FOR %s", filename);
-			printf("EXPECTING %d", x_size);
-			printf("GOT %d", file_x);
-			exit(EXIT_FAILURE);
+			set_graphics_mode(VGA_TEXT_MODE);
+			printf("FIS - Couldn't allocate standard memory for image file: %s\n", filename);
+			exit(-1);
 		}
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-			if(current_char >= 48 && current_char <= 58)
-			{
-				file_y = file_y*10 + current_char - 48;
-			}
-			else if(current_char == '\n')
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
+	}
 
-		if(file_y != y_size)
+	while(count < ((unsigned long)image->size_x * (unsigned long)image->size_y))
+	{
+		buffer = (unsigned char)getc(file);
+
+		if(buffer == sequence_indicator)
 		{
-			set_graphics_mode(TEXT_MODE);
-			printf("WRONG Y SIZE FOR %s", filename);
-			printf("EXPECTING %d", y_size);
-			printf("GOT %d", file_y);
-			exit(EXIT_FAILURE);
-		}
+			sequence_index = (unsigned char)getc(file);
+			sequence_length = (unsigned char)getc(file);
 
-		current_number = 0;
-
-		for(i= 0; i<4;i++)
-		{	
-			current_char = fgetc(file);
-			if(current_char >= 48 && current_char <= 58)
+			for(i = 0; i < sequence_length; i++)
 			{
-				current_number = current_number*10 + current_char - 48;
-			}
-			else if(current_char == '\n')
-			{
-				break;
-			}
-			else
-			{
-				format_error = 1;
-			}
-		}
+				if(in_vmem)
+				{
+					bitmask = 0x0100 << (count & 3);
 
-		current_number = 0;
-
-		for(y = 0; y< y_size; y++)
-		{
-			for(x = 0; x < x_size; x++)
-			{
-				outport(SEQUENCER, ((0x1<<(x%4))<<8)+0x02);
-				for(j = 0; j<4; j++)
-				{	
-					current_char = fgetc(file);
-
-					if(current_char >= 48 && current_char <= 58)
-					{
-						current_number = current_number*10 + current_char - 48;
-					}
-					else if(current_char == '\n')
-					{
-						break;
-					}
-					else
-					{
-						format_error = 1;
-					}
+					outport(SEQ_ADDRESS, bitmask | SEQ_MAP_MASK);
+					*((image->data) + (count>>2)) = sequence_index + palette_start_location;
 				}
-				*(allocated_mem+(y*(x_size>>2))+(x>>2)) = (unsigned char)current_number;		
-				current_number = 0;
+				else
+				{
+					*((image->data) + count) = sequence_index + palette_start_location;
+				}
+				count++;
 			}
 		}
-
-		if(format_error == 1)
+		else
 		{
-			set_graphics_mode(TEXT_MODE);
-			printf("FILE IS NOT PGM, OR IS CORRUPTED SOMEHOW, CHECK YO FILES YO, filename: ", filename);
-			exit(EXIT_FAILURE);
-		}
+			if(in_vmem)
+			{
+				bitmask = 0x0100 << (count & 3);
 
-		fclose(file);
+				outport(SEQ_ADDRESS, bitmask | SEQ_MAP_MASK);
+				*((image->data) + (count>>2)) = buffer + palette_start_location;
+			}
+			else
+			{
+				*((image->data) + count) = buffer + palette_start_location;
+			}
+			count++;	
+		}
 	}
+
+	for(i = 0; i <= image->last_index_used; i++)
+	{
+		image->indexed_color[i].r = (unsigned char)getc(file);
+		image->indexed_color[i].g = (unsigned char)getc(file);
+		image->indexed_color[i].b = (unsigned char)getc(file);
+	}
+
+	if(do_load_palette)
+	{
+		load_palette(image);
+	}
+
+	return (IMAGE *)image;
 }
 
-void copy_vmem_to_location_latched (	unsigned char far* source,
-										unsigned char far* destination,
-										int bytes,
-										int dest_offset)
+void unload_image(IMAGE * image)
 {
-	unsigned char current_pixel = 0;
+	if(image->in_vmem)
+	{
+		vfree((VMEM*)image->data);
+	}
+	else
+	{
+		free((void *)image->data);
+	}
+
+	free(image);
+}
+
+void load_palette(IMAGE * image)
+{
+	unsigned char last_index_used;
+	unsigned char palette_start_location;
 
 	int i;
 
-	if(current_video_mode == GRAPHICS_MODEX)
+	last_index_used = image->last_index_used;
+	palette_start_location = image->palette_start_location;
+
+	for(i = 0; i <= last_index_used; i++)
 	{
-		outport(GFX_CONTROLLER, 0x08);
-		outport(SEQUENCER, (0xff<<8)+0x02);
-
-		for(i=0; i<bytes; i++)
-		{	
-			current_pixel = *(source+i);		
-			*(dest_offset+destination+i) = 0;	
-		}
-
-		outport(GFX_CONTROLLER + 1, 0x0ff);	
+		set_palette(i + palette_start_location, image->indexed_color[i]);
 	}
 }
 
-void copy_vmem_to_dbuffer_latched (	unsigned char far* source,
-									int bytes,
-									int dest_offset)
+void set_palette(unsigned char color_index, COLOR color)
 {
-	copy_vmem_to_location_latched(source, draw_buffer, bytes, dest_offset);
+	outportb(DAC_PALETTE_W_ADDRESS, color_index);
+	outportb(DAC_PALETTE_DATA, color.r>>2);
+	outportb(DAC_PALETTE_DATA, color.g>>2);
+	outportb(DAC_PALETTE_DATA, color.b>>2);
 }
 
-void draw_vmem_to_dbuffer_latched (	unsigned char far* source,
-									int latchedColumns,
-									int lines,
-									int dest_offset)
+void copy_vmem_to_vmem		(	VMEM* source,
+								VMEM* destination,
+								int bytes,
+								int dest_offset_bytes)
 {
-	unsigned char current_pixel = 0;
+	volatile unsigned char current_pixel = 0;
+
+	int i;
+
+	outport(GFXC_ADDRESS, 0x0000 | GFXC_BIT_MASK);
+	outport(SEQ_ADDRESS, 0x0F00 | SEQ_MAP_MASK);
+
+	for(i=0; i < bytes; i++)
+	{	
+		current_pixel = *(source + i);		
+		*(dest_offset_bytes + destination + i) = 0;	
+	}
+
+	outport(GFXC_ADDRESS, 0xFF00 | GFXC_BIT_MASK);	
+}
+
+void copy_smem_to_vmem		(	unsigned char far* source,
+								VMEM* destination,
+								int bytes,
+								int dest_offset_bytes)
+{
+	volatile unsigned char current_pixel = 0;
+
+	int i, p;
+
+	char bitmask;
+
+	bitmask = 0x00;
+
+	for(p = 0; p < 4; p++)
+	{
+		bitmask = (0x01 << p);
+
+		_asm	{
+				mov dx,	SEQ_ADDRESS
+				mov al,	SEQ_MAP_MASK
+				mov ah,	bitmask
+				out dx, ax
+				}
+
+		for(i = 0; i < (bytes>>2); i++)
+		{
+			current_pixel = *(source + (i*4) + p);
+			*(destination + dest_offset_bytes + i) = current_pixel;
+		}
+	}	
+}
+
+void copy_vmem_to_db 		(	VMEM* source,
+								int dest_offset_bytes,
+								int size_x_bytes,
+								int size_y_pels)
+{
+	volatile unsigned char current_pixel = 0;
 
 	int x, y;
 
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		outport(GFX_CONTROLLER, 0x08);
-		outport(SEQUENCER, (0xff<<8)+0x02);
+	outport(GFXC_ADDRESS, 	0x0000 | GFXC_BIT_MASK);
+	outport(SEQ_ADDRESS, 	0xFF00 | SEQ_MAP_MASK);
 
-		for(y=0; y<lines; y++)
-		{
-			for(x=0; x<latchedColumns; x++)
-			{	
-				current_pixel = *(source+y*latchedColumns+x);		
-				*(dest_offset+draw_buffer+y*(CURRENT_RES_X>>2)+x) = 0;	
-			}
+	for(y = 0; y < size_y_pels; y++)
+	{
+		for(x = 0; x < size_x_bytes; x++)
+		{	
+			current_pixel = *(source + y*size_x_bytes + x);		
+			*(get_draw_buffer() + dest_offset_bytes + y*(CURRENT_RES_X>>2) + x) = 0;	
 		}
-		outport(GFX_CONTROLLER + 1, 0x0ff);	
 	}
+	outport(GFXC_ADDRESS, 	0xFF00 | GFXC_BIT_MASK);
 }
 
-void copy_vmem_to_dbuffer(	unsigned char far * location, 
-							int x_pos_fbuffer, 
-							int y_pos_fbuffer, 
-							int x_offset_start_vmem, 
-							int x_offset_end_vmem,
-							int y_offset_start_vmem,
-							int y_offset_end_vmem,
-							int x_vmem_size)
+void copy_smem_to_db		(	unsigned char far* source,
+								int dest_offset_bytes,
+								int size_x_pels,
+								int size_y_pels)
 {
-	/*
-	int x;
-	int y;
-	*/
-	unsigned char current_pixel = 0;
+	volatile unsigned char current_pixel = 0;
 
-	int src_plane = 0;
-	int dest_plane = 0;
+	int x, y, p;
 
-	int dest_offset = 0;
-	int src_offset = 0;
+	char bitmask;
 
-	int x;
-	int y;
+	bitmask = 0x00;
 
-	int i;
-	int j;
-
-	src_plane = x_offset_start_vmem%4;
-	dest_plane = x_pos_fbuffer%4;
-
-	for(i = 0; i<4; i++, src_plane++, dest_plane++)
+	for(p = 0; p < 4; p++)
 	{
-		if(src_plane >=4)
-		{
-			src_plane = 0;
-			src_offset += 1;
-		}
-		if(dest_plane >=4)
-		{
-			dest_plane = 0;
-			dest_offset += 1;
-		}
+		bitmask = (0x01 << p);
 
-		outport(GFX_CONTROLLER, (src_plane<<8)+0x04);
-		outport(SEQUENCER, ((0x1<<dest_plane)<<8)+0x02);
-
-		for(x=0; x<=(x_offset_end_vmem-x_offset_start_vmem)-i; x+=4)	
-		{
-			for(y=0; y<=(y_offset_end_vmem-y_offset_start_vmem); y++)
-			{		
-				current_pixel = *(	location +
-									src_offset +
-									((y+y_offset_start_vmem)*(x_vmem_size>>2)) +
-									((x+x_offset_start_vmem)>>2)   );
-				
-				if(current_pixel != TRANSPARENT_INDEX)
-				{
-					if(x<x_offset_end_vmem-x_offset_start_vmem)
-					{
-						
-						*(	draw_buffer + 
-							(x_pos_fbuffer>>2) + 
-							dest_offset +
-							y_pos_fbuffer*(CURRENT_RES_X>>2) + 
-							y*(CURRENT_RES_X>>2) + 
-							(x>>2))
-							 = current_pixel;
+		_asm	{
+					mov dx,	SEQ_ADDRESS
+					mov al,	SEQ_MAP_MASK
+					mov ah,	bitmask
+					out dx, ax
 					}
-				}
-			}	
-		}
-	}
-	/*
-	if(current_video_mode == GRAPHICS_MODEX)
-	{
-		outport(GFX_CONTROLLER, 0x08);
 
-		for(x=0; x<x_offset_end_vmem-x_offset_start_vmem; x++)
+		for(y = 0; y < size_y_pels; y++)
 		{
-			if(x==0)
-			{
-				outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
-			}
-			else
-			if(x==x_offset_end_vmem-x_offset_start_vmem-1)
-			{
-				outport(SEQUENCER, (((0xf>>(x_offset_start_vmem & 3))&0xf)<<8)+0x02);
-			}
-			else
-			if(x==1)
-			{
-				outport(SEQUENCER, ((0xf<<8)+0x02));
-			}
-			for(y=0; y<y_offset_end_vmem-y_offset_start_vmem; y++)
+			for(x = 0; x < (size_x_pels>>2); x++)
 			{	
-				current_pixel = *(location+(x_offset_start_vmem>>2)+y*(x_vmem_size>>2));		
-				*(draw_buffer + (x_pos_fbuffer>>2)+(y_pos_fbuffer+y)*(CURRENT_RES_X>>2)) = 0;	
+				current_pixel = *(source + x*4 + y*size_x_pels + p);
+				*(get_draw_buffer() + dest_offset_bytes + x + y*(CURRENT_RES_X>>2)) = current_pixel;
 			}
 		}
-	} 
-	*/
+	}	
 }
+
+void copy_image_to_db		(   IMAGE* image,
+								POINT2 position  )
+{
+	int dest_offset_bytes;
+
+	dest_offset_bytes = (position.x>>2) + position.y*(CURRENT_RES_X>>2);
+
+	if(image->in_vmem)
+	{
+		copy_vmem_to_db(image->data, dest_offset_bytes, (image->size_x)>>2, image->size_y);
+	}
+	else
+	{
+		copy_smem_to_db(image->data, dest_offset_bytes, image->size_x, image->size_y);
+	}
+}
+
+/*
+void main()
+{
+	IMAGE * test;
+	POINT2 position;
+
+	position.x = 0;
+	position.y = 0;
+
+	set_graphics_mode(VGA_GRAPHICS_MODE_X);
+	set_double_buffer(1);
+	init_vga();
+
+	test = load_fis_image("handvga.fis", 1, 1, 30);
+	copy_image_to_db(test, position);
+
+	flip_front_page();
+	getch();
+
+	test = load_fis_image("scrtest.fis", 1, 1, 30);
+	copy_image_to_db(test, position);
+
+	flip_front_page();
+	getch();
+	set_graphics_mode(VGA_TEXT_MODE);
+}
+*/

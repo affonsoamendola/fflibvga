@@ -17,5 +17,11 @@ $(LIBNAME).OBJ:
 	$(CC) "-I$(INCLUDE) -L$(LIB) -o$(LIBNAME).OBJ $(CCFLAGS)" *.c
 	tlib ".\$(LIBNAME).LIB + $(LIBNAME).OBJ"
 
+exe:
+	$(CC) "-I$(INCLUDE) -e$(LIBNAME) -L$(LIB)" *.c
+
 clean:
-	$(RM) *.OBJ *.EXE *.LOG *.BAT *.OBJ *.LIB
+	$(RM) *.OBJ *.EXE *.LOG *.BAT *.OBJ *.LIB *.AAA *.BAK
+
+run:
+	dosbox -conf ~/.dosbox/tcc.conf -c "$(LIBNAME)"
