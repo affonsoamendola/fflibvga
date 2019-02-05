@@ -16,13 +16,14 @@ You might ask yourself, "Why!!? Why create your own file format if there are tho
 And that's a really valid question with a really simple answer, which is: "Because it was fun!", and it works for what I need it to work, isn't that the mark of a good file format?
 
 The functions defined in this library allows you to:
+```
+Draw individual pixels
 
-*Draw individual pixels
+Draw Vertical and Horizontal lines
 
-*Draw Vertical and Horizontal lines
+Change the color palette of the VGA
 
-*Change the color palette of the VGA
+Load images and display them on screen at any position
 
-*Load images and display them on screen at any position
-
-*Print characters, strings and integers on screen.
+Print characters, strings and integers on screen.
+```
