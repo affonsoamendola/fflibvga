@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <conio.h>
+#include <math.h>
 
 #include "fflibvga.h"
 
@@ -33,6 +34,28 @@ int DOUBLE_BUFFER_ENABLE = 1;
 
 VMEM_ALLOCATION video_allocation_head;
 
+POINT2 point2(int x, int y)
+{
+	POINT2 to_return;
+
+	to_return.x = x;
+	to_return.y = y;
+
+	return to_return;
+}
+
+int sign(int value)
+{
+	if(value >= 0)
+	{
+		return +1;
+	}
+	else
+	{
+		return -1;
+	}
+}
+
 void init_vga()
 {
 	//Initializes the VGA for use, run this before using any function here.
@@ -40,6 +63,20 @@ void init_vga()
 	video_allocation_head.mem_start = (VMEM*)VMEM_END;
 	video_allocation_head.mem_end = (VMEM*)VMEM_END;
 	video_allocation_head.next_block = &video_allocation_head;
+}
+
+void wait_vblank()
+{
+	asm {
+			mov dx, INPUT_STATUS_1
+		}
+	loop:;
+	asm {
+			
+			in al, dx
+			test al, 8
+			jz loop:
+		}
 }
 
 unsigned char far * valloc(unsigned long size)
@@ -292,17 +329,34 @@ void draw_line_h(POINT2 start_point, int length, char color)
 
 	int i;
 
-	y_offset = start_point.y*(CURRENT_RES_X>>2);
+	POINT2 left_point;
 
-	bitmask_left = 0x0F << (start_point.x & 0x03);
-	bitmask_right = ~(0x0F << ((start_point.x + length) & 0x03));
+	if(start_point.y < 0 || start_point.y >= get_res_x())
+	{
+		return;
+	}
+
+	if(length < 0)
+	{
+		left_point.x = start_point.x + length;
+		left_point.y = start_point.y;
+	}
+	else
+	{
+		left_point = start_point;
+	}
+
+	y_offset = left_point.y*(CURRENT_RES_X>>2);
+
+	bitmask_left = 0x0F << (left_point.x & 0x03);
+	bitmask_right = ~(0x0F << ((left_point.x + abs(length)) & 0x03));
 	
 	bitmask_left &= 0x0F;
 	bitmask_right &= 0x0F;
 
 	bitmask_center = bitmask_left & bitmask_right;
 
-	if(start_point.x>>2 != (start_point.x + length)>>2)
+	if(left_point.x>>2 != (left_point.x + abs(length))>>2)
 	{
 		_asm	{
 				mov dx,	SEQ_ADDRESS
@@ -311,16 +365,22 @@ void draw_line_h(POINT2 start_point, int length, char color)
 				out dx, ax
 				}
 
-		get_draw_buffer()[y_offset + (start_point.x>>2)] = color;
-
+		if((left_point.x>>2) >= 0 && (left_point.x>>2) < (get_res_x()>>2))
+		{
+			get_draw_buffer()[y_offset + (left_point.x>>2)] = color;
+		}
+		
 		_asm	{
 				mov dx,	SEQ_ADDRESS
 				mov al,	SEQ_MAP_MASK
 				mov ah,	bitmask_right
 				out dx, ax
 				}
-
-		get_draw_buffer()[y_offset + ((start_point.x + length)>>2)] = color;
+		
+		if(((left_point.x + abs(length))>>2) >= 0 && ((left_point.x + abs(length))>>2) < (get_res_x()>>2))
+		{
+			get_draw_buffer()[y_offset + ((left_point.x + abs(length))>>2)] = color;
+		}
 
 		_asm	{
 				mov dx,	SEQ_ADDRESS
@@ -329,9 +389,12 @@ void draw_line_h(POINT2 start_point, int length, char color)
 				out dx, ax
 				}
 
-		for(i = (start_point.x>>2)+1; i < ((start_point.x + length)>>2); i++)
+		for(i = (left_point.x>>2)+1; i < ((left_point.x + abs(length))>>2); i++)
 		{
-			get_draw_buffer()[y_offset + i] = color;
+			if(i >= 0 && i < (get_res_x()>>2))
+			{
+				get_draw_buffer()[y_offset + i] = color;
+			}
 		}
 	}
 	else
@@ -343,7 +406,10 @@ void draw_line_h(POINT2 start_point, int length, char color)
 				out dx, ax
 				}
 
-		get_draw_buffer()[y_offset + (start_point.x>>2)] = color;
+		if((left_point.x>>2) >= 0 && (left_point.x>>2) < (get_res_x()>>2))
+		{		
+			get_draw_buffer()[y_offset + (left_point.x>>2)] = color;
+		}
 	}
 }
 
@@ -354,7 +420,7 @@ void draw_line_v(POINT2 start_point, int height, char color)
 	int start_offset;
 	int i;
 
-	start_offset = start_point.y*(CURRENT_RES_X>>2) + (start_point.x>>2);
+	start_offset = start_point.y*(get_res_x()>>2) + (start_point.x>>2);
 
 	bitmask = 0x01 << (start_point.x & 3);
 
@@ -365,9 +431,86 @@ void draw_line_v(POINT2 start_point, int height, char color)
 			out dx, ax
 			}
 
-	for(i = 0; i < height; i++)
+
+	for(i = 0; i < abs(height); i++)
 	{
-		get_draw_buffer()[start_offset + i*(CURRENT_RES_X>>2)] = color;
+		if(	start_point.y + (sign(height) * i) >= 0 && start_point.y + (sign(height) * i) < get_res_y() && 
+			start_point.x >= 0 && start_point.x < get_res_x())
+		{
+			get_draw_buffer()[start_offset + (sign(height)) * i * (get_res_x()>>2)] = color;
+		}
+	}
+}
+
+void draw_line(POINT2 start_point, POINT2 end_point, char color)
+{
+	float delta_x;
+	float delta_y;
+	float delta_error;
+	float error;
+
+	int y;
+	int x;
+	int h_line_start;
+	int v_line_start;
+
+	if(start_point.x == end_point.x)
+	{
+		draw_line_v(start_point, end_point.y - start_point.y, color);
+		return;
+	}
+	else if(start_point.y == end_point.y)
+	{
+		draw_line_h(start_point, end_point.x - start_point.x, color);
+		return;
+	}
+
+	delta_x = (float)(end_point.x - start_point.x);
+	delta_y = (float)(end_point.y - start_point.y);
+
+	if(fabs(delta_x) > fabs(delta_y))
+	{
+		delta_error = fabs(delta_y/delta_x);
+
+		error = 0.0f;
+
+		y = start_point.y;
+		h_line_start = 0;
+
+		for(x = 0; x < abs(end_point.x - start_point.x); x++)
+		{
+			error = error + delta_error;
+			if(error >= 0.5f)
+			{
+				draw_line_h(point2(start_point.x + sign(delta_x)*h_line_start, y), sign(delta_x)*(x - h_line_start), color);
+				h_line_start += x - h_line_start;
+				y = y + sign(delta_y);
+				error -= 1.0f;
+			}
+		} 	
+		draw_line_h(point2(start_point.x + sign(delta_x)*h_line_start, y), sign(delta_x)*(x - h_line_start), color);
+	}
+	else
+	{
+		delta_error = fabs(delta_x/delta_y);
+
+		error = 0.0f;
+
+		x = start_point.x;
+		v_line_start = 0;
+
+		for(y = 0; y < abs(end_point.y - start_point.y); y++)
+		{
+			error = error + delta_error;
+			if(error >= 0.5f)
+			{
+				draw_line_v(point2(x, start_point.y + sign(delta_y)*v_line_start), sign(delta_y)*(y - v_line_start), color);
+				v_line_start += y - v_line_start;
+				x = x + sign(delta_x);
+				error -= 1.0f;
+			}
+		} 	
+		draw_line_v(point2(x, start_point.y + sign(delta_y)*v_line_start), sign(delta_y)*(y - v_line_start), color);
 	}
 }
 
@@ -799,30 +942,14 @@ void copy_image_to_db		(   IMAGE* image,
 	}
 }
 
-/*
 void main()
 {
-	IMAGE * test;
-	POINT2 position;
-
-	position.x = 0;
-	position.y = 0;
-
 	set_graphics_mode(VGA_GRAPHICS_MODE_X);
 	set_double_buffer(1);
 	init_vga();
 
-	test = load_fis_image("handvga.fis", 1, 1, 30);
-	copy_image_to_db(test, position);
+	draw_line(point2(0, 200), point2(10, 0), COLOR_ORANGE_1);
 
 	flip_front_page();
 	getch();
-
-	test = load_fis_image("scrtest.fis", 1, 1, 30);
-	copy_image_to_db(test, position);
-
-	flip_front_page();
-	getch();
-	set_graphics_mode(VGA_TEXT_MODE);
 }
-*/

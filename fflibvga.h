@@ -222,6 +222,8 @@ typedef struct IMAGE_
 } 
 IMAGE;
 
+POINT2 point2(int x, int y);
+
 void init_vga();
 
 unsigned char far * valloc(unsigned long size);
@@ -246,6 +248,7 @@ void set_pixel(POINT2 pos, int color);
 
 void draw_line_h(POINT2 start_point, int length, char color);
 void draw_line_v(POINT2 start_point, int height, char color);
+void draw_line(POINT2 start_point, POINT2 end_point, char color);
 void draw_rectangle_filled(RECT rectangle, char color);
 
 void print_char(    POINT2 position, char c, 
