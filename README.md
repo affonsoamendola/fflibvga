@@ -1,10 +1,35 @@
-# fflibvga
-Fofonso's VGA Library for DOS.
+# Fofonso's VGA Library for DOS - fflibvga
+------------------------------------------------------------------
 
-A little project of mine (WumpusVGA) required some VGA magifuckery, so I wrote this basing myself on the WONDERFULLY AMAZING Andre LaMothe book The Black Art of 3d Game Programming, check it out!.
+A while back I started a project of a clone of the Hunt the Wumpus game for DOS and VGA graphics (WumpusVGA, check it out!), this library appeared as that game was being made (I probably had more fun developing this library than the game itself, :P), in the beginning it was very specific code made for that game, but later, when I started making another game with VGA graphics (AtomsVGA) I noticed that it needed some changes to be more generic, this version of the library fulfills that and I am pretty happy with it.
 
-This library is very basic, but it has primitive double buffering, and IT actually can function as the basis for some simple games, 
-if you need complex stuff like splitscreens or such, this wont work very well for you.
+I had a lot of fun developing this, and I intend to continue adding some stuff as I go.
 
-I made the decision to use .PPM files as the stanard file format, and that was a big mistake, in the future I intend to change that to a more manageable file (like a pure binary file, so I can get the filesize down a bit, right now its INSANE).
-NOTE: The PPM is the input file to a python script that separates the pallette and a .pgm file containing the indices of the colors, so you must run that to obtain an actual readable file by the library, that loads it into memory by using the load_pgm() function and loads the pallette by using the load_pallette() function.
+This entire thing was written based on the WONDERFUL Andre LaMothe book The Black Art of 3d Game Programming, and basically everything Michael Abrash ever wrote, seriously, that guy is a genius.
+
+However, this is a pretty basic library, and you won't be able to do much of serious game development with it (And why do that with VGA, you are crazier than me if you want to do serious dev stuff with this).
+
+It uses a new file format I and a friend of mine (Francisco Viana) came up with called .FIS (Fofonso's Image Storage), based on the ZSoft's PCX format, included is a python file to convert .PPM files to .FIS (I really like PPM, but it's way to big for this), it has primitive RLE compression (And it is not the same one that PCX uses, bear that in mind), the file format is defined in the /FIS/FISFileDefinition file.
+
+You might ask yourself, "Why!!? Why create your own file format if there are thousands of other ones ready for you to use, with better compression and all that!!? WHY?"
+
+And that's a really valid question with a really simple answer, which is: "Because it was fun!", and it works for what I need it to work, isn't that the mark of a good file format?
+
+The functions defined in this library allows you to:
+```
+Draw individual pixels
+
+Draw Vertical and Horizontal lines
+
+Change the color palette of the VGA
+
+Load images and display them on screen at any position
+
+Print characters, strings and integers on screen.
+```
+
+Have fun with it!
+
+And as always,
+
+Be Excellent to Each Other
